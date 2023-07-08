@@ -26,3 +26,11 @@ start-services:
 
 bench:
 	cd ~/isucon6q && ./isucon6q-bench
+
+kataribe: timestamp=$(date "+%Y%m%d-%H%M%S")
+kataribe:
+	mkdir -p ~/kataribe-logs
+	sudo cp /var/log/nginx/access.log /tmp/last-access.log && sudo chmod 666 /tmp/last-access.log
+	cat /tmp/last-access.log | ./kataribe -conf kataribe.toml > ~/kataribe-logs/$timestamp.log
+	cat ~/kataribe-logs/$timestamp.log | grep --after-context 20 "Top 20 Sort By Total"
+
