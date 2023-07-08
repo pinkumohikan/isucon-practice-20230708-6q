@@ -316,6 +316,7 @@ func keywordByKeywordDeleteHandler(w http.ResponseWriter, r *http.Request) {
 type Keyword struct {
 	Keyword string
 	Hash    string
+	Link    string
 }
 
 var (
@@ -334,8 +335,7 @@ func updateReplacer() error {
 	}
 	var hash2LinkReplaceRule []string
 	for _, k := range keywords {
-		link := fmt.Sprintf("<a href=\"%s\">%s</a>", baseUrl.String()+"/keyword/"+pathURIEscape(k.Keyword), html.EscapeString(k.Keyword))
-		hash2LinkReplaceRule = append(hash2LinkReplaceRule, k.Hash, link)
+		hash2LinkReplaceRule = append(hash2LinkReplaceRule, k.Hash, k.Link)
 	}
 	keywordsMx.RUnlock()
 
@@ -364,6 +364,7 @@ func initializeKeywords() error {
 		ks = append(ks, Keyword{
 			Keyword: k,
 			Hash:    fmt.Sprintf("isuda_%x", md5.Sum([]byte(k))),
+			Link:    fmt.Sprintf("<a href=\"%s\">%s</a>", baseUrl.String()+"/keyword/"+pathURIEscape(k), html.EscapeString(k)),
 		})
 	}
 	rows.Close()
@@ -380,6 +381,7 @@ func addKeyword(keyword string) error {
 	keywords = append(keywords, Keyword{
 		Keyword: keyword,
 		Hash:    fmt.Sprintf("isuda_%x", md5.Sum([]byte(keyword))),
+		Link:    fmt.Sprintf("<a href=\"%s\">%s</a>", baseUrl.String()+"/keyword/"+pathURIEscape(keyword), html.EscapeString(keyword)),
 	})
 	keywordsMx.Unlock()
 
