@@ -319,8 +319,9 @@ type Keyword struct {
 }
 
 var (
-	keywords   []Keyword
-	keywordsMx = sync.RWMutex{}
+	k2hReplacer    *strings.Replacer
+	h2lReplacer    *strings.Replacer
+	linkReplacerMx = sync.RWMutex{}
 )
 
 func updateKeywords() error {
@@ -331,22 +332,33 @@ func updateKeywords() error {
 		return err
 	}
 
-	ks := make([]Keyword, 0, 500)
+	keywords := make([]Keyword, 0, 500)
 	for rows.Next() {
 		k := ""
 		if err := rows.Scan(&k); err != nil {
 			return err
 		}
-		ks = append(ks, Keyword{
+		keywords = append(keywords, Keyword{
 			Keyword: k,
 			Hash:    fmt.Sprintf("isuda_%x", md5.Sum([]byte(k))),
 		})
 	}
 	rows.Close()
 
-	keywordsMx.Lock()
-	keywords = ks
-	keywordsMx.Unlock()
+	var keyword2HashReplaceRule []string
+	for _, k := range keywords {
+		keyword2HashReplaceRule = append(keyword2HashReplaceRule, k.Keyword, k.Hash)
+	}
+	var hash2LinkReplaceRule []string
+	for _, k := range keywords {
+		link := fmt.Sprintf("<a href=\"%s\">%s</a>", baseUrl.String()+"/keyword/"+pathURIEscape(k.Keyword), html.EscapeString(k.Keyword))
+		hash2LinkReplaceRule = append(hash2LinkReplaceRule, k.Hash, link)
+	}
+
+	linkReplacerMx.Lock()
+	k2hReplacer = strings.NewReplacer(keyword2HashReplaceRule...)
+	h2lReplacer = strings.NewReplacer(hash2LinkReplaceRule...)
+	linkReplacerMx.Unlock()
 
 	return nil
 }
@@ -356,26 +368,11 @@ func htmlify(w http.ResponseWriter, r *http.Request, content string) string {
 		return ""
 	}
 
-	keywordsMx.RLock()
-	var keyword2HashReplaceRule []string
-	for _, k := range keywords {
-		keyword2HashReplaceRule = append(keyword2HashReplaceRule, k.Keyword, k.Hash)
-	}
-	var hash2LinkReplaceRule []string
-	for _, k := range keywords {
-		u, err := r.URL.Parse(baseUrl.String() + "/keyword/" + pathURIEscape(k.Keyword))
-		panicIf(err)
-		link := fmt.Sprintf("<a href=\"%s\">%s</a>", u, html.EscapeString(k.Keyword))
-		hash2LinkReplaceRule = append(hash2LinkReplaceRule, k.Hash, link)
-	}
-	keywordsMx.RUnlock()
-
-	k2h := strings.NewReplacer(keyword2HashReplaceRule...)
-	h2l := strings.NewReplacer(hash2LinkReplaceRule...)
-
 	content = html.EscapeString(content)
-	content = k2h.Replace(content)
-	content = h2l.Replace(content)
+	linkReplacerMx.RLock()
+	content = k2hReplacer.Replace(content)
+	content = h2lReplacer.Replace(content)
+	linkReplacerMx.RUnlock()
 
 	return strings.Replace(content, "\n", "<br />\n", -1)
 }
