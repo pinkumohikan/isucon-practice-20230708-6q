@@ -1,6 +1,6 @@
 .PHONY: *
 
-gogo: stop-services build truncate-logs start-services
+gogo: stop-services build truncate-logs start-services bench
 
 stop-services:
 	sudo systemctl stop nginx
@@ -24,3 +24,5 @@ start-services:
 	sudo systemctl start isuda.go
 	sudo systemctl start nginx
 
+bench:
+	cd ~/isucon6q && ./isucon6q-bench
