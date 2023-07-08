@@ -80,7 +80,7 @@ func initializeHandler(w http.ResponseWriter, r *http.Request) {
 	panicIf(err)
 	defer resp.Body.Close()
 
-	panicIf(updateKeywords())
+	panicIf(initializeKeywords())
 
 	re.JSON(w, http.StatusOK, map[string]string{"result": "ok"})
 }
@@ -175,7 +175,7 @@ func keywordPostHandler(w http.ResponseWriter, r *http.Request) {
 		author_id = ?, keyword = ?, description = ?, updated_at = NOW()
 	`, userID, keyword, description, userID, keyword, description)
 	panicIf(err)
-	panicIf(updateKeywords())
+	panicIf(addKeyword(keyword))
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
@@ -308,7 +308,7 @@ func keywordByKeywordDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	_, err = db.Exec(`DELETE FROM entry WHERE keyword = ?`, keyword)
 	panicIf(err)
 
-	panicIf(updateKeywords())
+	panicIf(removeKeyword(keyword))
 
 	http.Redirect(w, r, "/", http.StatusFound)
 }
@@ -319,32 +319,15 @@ type Keyword struct {
 }
 
 var (
+	keywords       []Keyword
+	keywordsMx     = sync.RWMutex{}
 	k2hReplacer    *strings.Replacer
 	h2lReplacer    *strings.Replacer
 	linkReplacerMx = sync.RWMutex{}
 )
 
-func updateKeywords() error {
-	rows, err := db.Query(`
-		SELECT keyword FROM entry ORDER BY keyword_length DESC
-	`)
-	if err != nil {
-		return err
-	}
-
-	keywords := make([]Keyword, 0, 500)
-	for rows.Next() {
-		k := ""
-		if err := rows.Scan(&k); err != nil {
-			return err
-		}
-		keywords = append(keywords, Keyword{
-			Keyword: k,
-			Hash:    fmt.Sprintf("isuda_%x", md5.Sum([]byte(k))),
-		})
-	}
-	rows.Close()
-
+func updateReplacer() error {
+	keywordsMx.RLock()
 	var keyword2HashReplaceRule []string
 	for _, k := range keywords {
 		keyword2HashReplaceRule = append(keyword2HashReplaceRule, k.Keyword, k.Hash)
@@ -354,6 +337,7 @@ func updateKeywords() error {
 		link := fmt.Sprintf("<a href=\"%s\">%s</a>", baseUrl.String()+"/keyword/"+pathURIEscape(k.Keyword), html.EscapeString(k.Keyword))
 		hash2LinkReplaceRule = append(hash2LinkReplaceRule, k.Hash, link)
 	}
+	keywordsMx.RUnlock()
 
 	linkReplacerMx.Lock()
 	k2hReplacer = strings.NewReplacer(keyword2HashReplaceRule...)
@@ -361,6 +345,57 @@ func updateKeywords() error {
 	linkReplacerMx.Unlock()
 
 	return nil
+}
+
+func initializeKeywords() error {
+	rows, err := db.Query(`
+		SELECT keyword FROM entry ORDER BY keyword_length DESC
+	`)
+	if err != nil {
+		return err
+	}
+
+	ks := make([]Keyword, 0, 500)
+	for rows.Next() {
+		k := ""
+		if err := rows.Scan(&k); err != nil {
+			return err
+		}
+		ks = append(ks, Keyword{
+			Keyword: k,
+			Hash:    fmt.Sprintf("isuda_%x", md5.Sum([]byte(k))),
+		})
+	}
+	rows.Close()
+
+	keywordsMx.Lock()
+	keywords = ks
+	keywordsMx.Unlock()
+
+	return updateReplacer()
+}
+
+func addKeyword(keyword string) error {
+	keywordsMx.Lock()
+	keywords = append(keywords, Keyword{
+		Keyword: keyword,
+		Hash:    fmt.Sprintf("isuda_%x", md5.Sum([]byte(keyword))),
+	})
+	keywordsMx.Unlock()
+
+	return updateReplacer()
+}
+func removeKeyword(keyword string) error {
+	keywordsMx.Lock()
+	for i, k := range keywords {
+		if k.Keyword == keyword {
+			keywords = append(keywords[:i], keywords[i+1:]...)
+			break
+		}
+	}
+	keywordsMx.Unlock()
+
+	return updateReplacer()
 }
 
 func htmlify(w http.ResponseWriter, r *http.Request, content string) string {
