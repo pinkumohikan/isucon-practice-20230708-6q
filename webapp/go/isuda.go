@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/md5"
 	"crypto/sha1"
 	"database/sql"
 	"encoding/json"
@@ -14,7 +15,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -313,8 +313,13 @@ func keywordByKeywordDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
+type Keyword struct {
+	Keyword string
+	Hash    string
+}
+
 var (
-	keywords   = []string{}
+	keywords   []Keyword
 	keywordsMx = sync.RWMutex{}
 )
 
@@ -326,13 +331,16 @@ func updateKeywords() error {
 		return err
 	}
 
-	ks := make([]string, 0, 500)
+	ks := make([]Keyword, 0, 500)
 	for rows.Next() {
 		k := ""
 		if err := rows.Scan(&k); err != nil {
 			return err
 		}
-		ks = append(ks, regexp.QuoteMeta(k))
+		ks = append(ks, Keyword{
+			Keyword: k,
+			Hash:    fmt.Sprintf("isuda_%x", md5.Sum([]byte(k))),
+		})
 	}
 	rows.Close()
 
@@ -349,21 +357,26 @@ func htmlify(w http.ResponseWriter, r *http.Request, content string) string {
 	}
 
 	keywordsMx.RLock()
-	re := regexp.MustCompile("(" + strings.Join(keywords, "|") + ")")
+	var keyword2HashReplaceRule []string
+	for _, k := range keywords {
+		keyword2HashReplaceRule = append(keyword2HashReplaceRule, k.Keyword, k.Hash)
+	}
+	var hash2LinkReplaceRule []string
+	for _, k := range keywords {
+		u, err := r.URL.Parse(baseUrl.String() + "/keyword/" + pathURIEscape(k.Keyword))
+		panicIf(err)
+		link := fmt.Sprintf("<a href=\"%s\">%s</a>", u, html.EscapeString(k.Keyword))
+		hash2LinkReplaceRule = append(hash2LinkReplaceRule, k.Hash, link)
+	}
 	keywordsMx.RUnlock()
 
-	kw2sha := make(map[string]string)
-	content = re.ReplaceAllStringFunc(content, func(kw string) string {
-		kw2sha[kw] = "isuda_" + fmt.Sprintf("%x", sha1.Sum([]byte(kw)))
-		return kw2sha[kw]
-	})
+	k2h := strings.NewReplacer(keyword2HashReplaceRule...)
+	h2l := strings.NewReplacer(hash2LinkReplaceRule...)
+
 	content = html.EscapeString(content)
-	for kw, hash := range kw2sha {
-		u, err := r.URL.Parse(baseUrl.String() + "/keyword/" + pathURIEscape(kw))
-		panicIf(err)
-		link := fmt.Sprintf("<a href=\"%s\">%s</a>", u, html.EscapeString(kw))
-		content = strings.Replace(content, hash, link, -1)
-	}
+	content = k2h.Replace(content)
+	content = h2l.Replace(content)
+
 	return strings.Replace(content, "\n", "<br />\n", -1)
 }
 
