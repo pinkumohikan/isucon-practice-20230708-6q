@@ -90,14 +90,14 @@ duration_index = 10
 [[bundle]]
 regexp = 'GET /keyword/.*'
 name = 'GET /keyword/.*'
-#
+
 [[bundle]]
 regexp = 'GET /\?page=[\d]+'
 name = 'GET /?page=[\d]+'
-#
-#[[bundle]]
-#regexp = '^(GET|HEAD) /images/'
-#name = 'GET /images/*'
+
+[[bundle]]
+regexp = 'POST /stars\?user=[a-zA-Z0-9]+&keyword=.*'
+name = 'POST /stars?user=[a-zA-Z0-9]+&keyword=.*'
 
 ################################################################################
 # Replace
