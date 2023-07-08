@@ -91,9 +91,9 @@ duration_index = 10
 regexp = 'GET /keyword/.*'
 name = 'GET /keyword/.*'
 #
-#[[bundle]]
-#regexp = '^(GET|HEAD) /stylesheets/'
-#name = 'GET /stylesheets/*'
+[[bundle]]
+regexp = 'GET /\?page=[\d]+'
+name = 'GET /?page=[\d]+'
 #
 #[[bundle]]
 #regexp = '^(GET|HEAD) /images/'
