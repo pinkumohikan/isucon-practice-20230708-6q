@@ -9,7 +9,7 @@ stop-services:
 	sudo systemctl stop mysql
 
 build:
-	cd webapp/go/ && rm -f isuda isutar && GOPATH=$$PWD make
+	cd webapp/go/ && rm -f isuda isutar && make
 
 truncate-logs:
 	sudo journalctl --vacuum-size=1K

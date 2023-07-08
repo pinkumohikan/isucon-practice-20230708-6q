@@ -24,6 +24,7 @@ import (
 	"github.com/gorilla/sessions"
 	"github.com/unrolled/render"
 	_ "net/http/pprof"
+	"github.com/felixge/fgprof"
 )
 
 const (
