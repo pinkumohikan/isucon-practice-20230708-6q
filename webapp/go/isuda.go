@@ -19,12 +19,12 @@ import (
 	"strings"
 
 	"github.com/Songmu/strrand"
+	"github.com/felixge/fgprof"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/unrolled/render"
 	_ "net/http/pprof"
-	"github.com/felixge/fgprof"
 )
 
 const (
@@ -311,22 +311,18 @@ func htmlify(w http.ResponseWriter, r *http.Request, content string) string {
 		return ""
 	}
 	rows, err := db.Query(`
-		SELECT id, author_id, keyword, description, updated_at, created_at FROM entry ORDER BY keyword_length DESC
+		SELECT keyword FROM entry ORDER BY keyword_length DESC
 	`)
 	panicIf(err)
-	entries := make([]*Entry, 0, 500)
+
+	keywords := make([]string, 0, 500)
 	for rows.Next() {
-		e := Entry{}
-		err := rows.Scan(&e.ID, &e.AuthorID, &e.Keyword, &e.Description, &e.UpdatedAt, &e.CreatedAt)
-		panicIf(err)
-		entries = append(entries, &e)
+		k := ""
+		panicIf(rows.Scan(&k))
+		keywords = append(keywords, regexp.QuoteMeta(k))
 	}
 	rows.Close()
 
-	keywords := make([]string, 0, 500)
-	for _, entry := range entries {
-		keywords = append(keywords, regexp.QuoteMeta(entry.Keyword))
-	}
 	re := regexp.MustCompile("(" + strings.Join(keywords, "|") + ")")
 	kw2sha := make(map[string]string)
 	content = re.ReplaceAllStringFunc(content, func(kw string) string {
