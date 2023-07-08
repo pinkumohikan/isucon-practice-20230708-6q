@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/Songmu/strrand"
 	"github.com/felixge/fgprof"
@@ -78,6 +79,8 @@ func initializeHandler(w http.ResponseWriter, r *http.Request) {
 	resp, err := http.Get(fmt.Sprintf("%s/initialize", isutarEndpoint))
 	panicIf(err)
 	defer resp.Body.Close()
+
+	panicIf(updateKeywords())
 
 	re.JSON(w, http.StatusOK, map[string]string{"result": "ok"})
 }
@@ -172,6 +175,7 @@ func keywordPostHandler(w http.ResponseWriter, r *http.Request) {
 		author_id = ?, keyword = ?, description = ?, updated_at = NOW()
 	`, userID, keyword, description, userID, keyword, description)
 	panicIf(err)
+	panicIf(updateKeywords())
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
@@ -303,27 +307,51 @@ func keywordByKeywordDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err = db.Exec(`DELETE FROM entry WHERE keyword = ?`, keyword)
 	panicIf(err)
+
+	panicIf(updateKeywords())
+
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+var (
+	keywords   = []string{}
+	keywordsMx = sync.RWMutex{}
+)
+
+func updateKeywords() error {
+	rows, err := db.Query(`
+		SELECT keyword FROM entry ORDER BY keyword_length DESC
+	`)
+	if err != nil {
+		return err
+	}
+
+	ks := make([]string, 0, 500)
+	for rows.Next() {
+		k := ""
+		if err := rows.Scan(&k); err != nil {
+			return err
+		}
+		ks = append(ks, regexp.QuoteMeta(k))
+	}
+	rows.Close()
+
+	keywordsMx.Lock()
+	keywords = ks
+	keywordsMx.Unlock()
+
+	return nil
 }
 
 func htmlify(w http.ResponseWriter, r *http.Request, content string) string {
 	if content == "" {
 		return ""
 	}
-	rows, err := db.Query(`
-		SELECT keyword FROM entry ORDER BY keyword_length DESC
-	`)
-	panicIf(err)
 
-	keywords := make([]string, 0, 500)
-	for rows.Next() {
-		k := ""
-		panicIf(rows.Scan(&k))
-		keywords = append(keywords, regexp.QuoteMeta(k))
-	}
-	rows.Close()
-
+	keywordsMx.RLock()
 	re := regexp.MustCompile("(" + strings.Join(keywords, "|") + ")")
+	keywordsMx.RUnlock()
+
 	kw2sha := make(map[string]string)
 	content = re.ReplaceAllStringFunc(content, func(kw string) string {
 		kw2sha[kw] = "isuda_" + fmt.Sprintf("%x", sha1.Sum([]byte(kw)))
